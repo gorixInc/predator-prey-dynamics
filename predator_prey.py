@@ -304,14 +304,7 @@ class PredatorPreyModel(Model):
         self.agent_W_shape = agent.W.shape
         self.agent_b_shape = agent.b.shape
         
-        
-    def adjust_fitnesses(self):
-        """Adjust fitness values to be positive for roulette wheel selection."""
-        min_fitness = min(agent.fitness for agent in self.schedule.agents)
-        shift = -min_fitness + 1e-6 if min_fitness < 0 else 1e-6
-        for agent in self.schedule.agents:
-            agent.adjusted_fitness = agent.fitness + shift
-
+    
     def roulette_wheel_selection(self, species):
         """Select an agent based on roulette wheel selection."""
         all_fitnesses = [agent.fitness for agent in self.schedule.agents if agent.species == species]

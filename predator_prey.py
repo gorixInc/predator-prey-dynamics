@@ -96,14 +96,12 @@ class Animal(Agent):
         consp_obs = np.zeros(self.consp_obs_size * self.conspecific_vision_cap)
         hetero_obs = np.zeros(self.hetero_obs_size * self.heterospecific_vision_cap)
 
-        self_obs = np.array([self.heading,  self.speed])
+        self_obs = np.array([self.heading,  self.speed/self.max_speed])
 
         neighbours = np.array(neighbours)
         neighb_species = np.array([n.species for n in neighbours])
         consp_inds = np.where(neighb_species == self.species)[0]
         hetero_inds = np.where(neighb_species != self.species)[0]
-
-
 
         for i, ind in enumerate(consp_inds):
             if i == self.conspecific_vision_cap:
@@ -146,10 +144,12 @@ class Predator(Animal):
         for i, ind in enumerate(hetero_inds):
             hetero = neighbours[ind]
             distance = sqrt((self.pos[0] - hetero.pos[0])**2 + (self.pos[1] - hetero.pos[1])**2)
+
             if distance < self.size + hetero.size and hetero.alive == True:
                 hetero.alive = False
                 self.fitness += self.model.predator_catch_reward
                 hetero.fitness += self.model.prey_death_reward
+                self.model.prey_population -= 1  # decrement prey population
 
         # Movement fitness punishment
         self.fitness += self.model.predator_movement_reward * abs(self.speed) * self.model.dt
@@ -200,6 +200,9 @@ class PredatorPreyModel(Model):
         self.prey_population_size=prey_population_size
         self.steps_per_generation=steps_per_generation
 
+        self.prey_population = prey_population_size
+        self.predator_population = prey_population_size
+
         self.predator_catch_reward=predator_catch_reward
         self.prey_death_reward=prey_death_reward
         self.predator_movement_reward=predator_movement_reward
@@ -235,6 +238,7 @@ class PredatorPreyModel(Model):
                              'Pos': lambda a: (a.pos[0], a.pos[1]),
                              'Speed': 'speed',
                              'Acceleration': 'acceleration',
+                             'Message': 'message',
                              'Heading': 'heading',
                              'Species': 'species',
                              'Generation': 'generation',
@@ -399,12 +403,16 @@ class PredatorPreyModel(Model):
         self.step_counter += 1
         self.datacollector.collect(self)
 
-        if self.step_counter % self.steps_per_generation == 0:
-            print(self.generation_counter)
+        if self.step_counter % self.steps_per_generation == 0 or self.prey_population < 1:
+            if self.prey_population < 1:
+                print('Ended generation early, all prey dead')
+            print(f"Generation {self.generation_counter}")
             self.generation_counter += 1
 
             # Generate new population using old population
             new_prey = self.create_new_population('prey', self.prey_population_size)
+            self.prey_population = len(new_prey)
+
             new_predators =  self.create_new_population('predator', self.predator_population_size)
             new_agents = new_prey + new_predators
 

@@ -34,6 +34,7 @@ class Animal(Agent):
 
         self.speed = 0
         self.max_speed = max_speed
+        self.init_heading = heading
         self.heading = heading
         self.size = size
 
@@ -47,6 +48,7 @@ class Animal(Agent):
         self.species = species
         self.fitness = 0
         self.generation = 0
+        self.run = 0
         self.alive = True
 
         self.self_obs_size = 2
@@ -60,6 +62,11 @@ class Animal(Agent):
 
         self.W = np.random.normal(0, initial_weights_disp, (self.full_obs_size, self.full_act_size))
         self.b = np.zeros(self.full_act_size)
+
+    def reset(self):
+        self.heading = self.init_heading
+        self.speed = 0
+        self.alive = True
 
     def step(self):
         if not self.alive:
@@ -80,7 +87,7 @@ class Animal(Agent):
 
         acceleration, heading = Y[0], Y[1]
         heading = np.clip(heading, -1, 1)
-        message = Y[2:].astype(int)
+        message = np.clip(Y[2:], -1, 1).astype(int)
 
         self.message = message
         self.speed += acceleration * self.acceleration_factor * self.model.dt
@@ -168,7 +175,8 @@ class PredatorPreyModel(Model):
     def __init__(self, 
                  predator_population_size=10, 
                  prey_population_size=40,
-                 steps_per_generation=500,
+                 steps_per_run=500,
+                 runs_per_generation=5,
 
                  predator_catch_reward=10,
                  prey_death_reward=-10,
@@ -179,9 +187,13 @@ class PredatorPreyModel(Model):
                  prey_max_speed=20,
                  prey_acceleration_factor=5,
                  prey_message_number=0,
+                 prey_vision_range=np.inf,
+
                  predator_max_speed=20,
                  predator_acceleration_factor=5,
                  predator_message_number=0,
+                 predator_vision_range=np.inf,
+                 
                  conspecific_vision_cap=4,
                  heterospecific_vision_cap=4,
                  catch_range=1,
@@ -191,6 +203,10 @@ class PredatorPreyModel(Model):
                  mutation_flip_rate=0.01,
                  agent_initial_weights_disp = 0.1,
 
+                 mutation_rate_decay=0.98,
+                 mutation_strength_decay=0.98,
+                 mutation_flip_rate_decay=0.98, 
+
                  width=100,
                  height=100,
                  dt=0.05,
@@ -198,7 +214,8 @@ class PredatorPreyModel(Model):
         super().__init__()
         self.predator_population_size=predator_population_size
         self.prey_population_size=prey_population_size
-        self.steps_per_generation=steps_per_generation
+        self.steps_per_run=steps_per_run
+        self.runs_per_generation = runs_per_generation
 
         self.prey_population = prey_population_size
         self.predator_population = prey_population_size
@@ -212,9 +229,13 @@ class PredatorPreyModel(Model):
         self.prey_max_speed=prey_max_speed
         self.prey_acceleration_factor=prey_acceleration_factor
         self.prey_message_number=prey_message_number
+        self.prey_vision_range=prey_vision_range
+
         self.predator_max_speed=predator_max_speed
         self.predator_acceleration_factor=predator_acceleration_factor
         self.predator_message_number=predator_message_number
+        self.predator_vision_range=predator_vision_range
+
         self.conspecific_vision_cap=conspecific_vision_cap
         self.heterospecific_vision_cap=heterospecific_vision_cap
         self.catch_range=catch_range
@@ -223,6 +244,9 @@ class PredatorPreyModel(Model):
         self.mutation_strength=mutation_strength
         self.mutation_flip_rate=mutation_flip_rate
         self.agent_initial_weights_disp = agent_initial_weights_disp
+        self.mutation_rate_decay = mutation_rate_decay
+        self.mutation_strength_decay = mutation_strength_decay
+        self.mutation_flip_rate_decay = mutation_flip_rate_decay
 
         self.width=width
         self.height=height
@@ -242,6 +266,7 @@ class PredatorPreyModel(Model):
                              'Heading': 'heading',
                              'Species': 'species',
                              'Generation': 'generation',
+                             'Run': 'run',
                              'Alive': 'alive'}
         )
     
@@ -249,11 +274,18 @@ class PredatorPreyModel(Model):
         self.space = mesa.space.ContinuousSpace(width, height, True)
 
         
-        self.steps_per_generation = steps_per_generation 
+        self.steps_per_run = steps_per_run 
         self.agent_W_shape = None
         self.agent_b_shape = None
+        
         self.step_counter = 0
+        self.run_steps = 0
+        self.generation_steps = 0
+
         self.generation_counter = 0
+        self.run_counter = 0
+
+
         self.create_population()
 
     def compute_average_prey_fitness(self):
@@ -264,13 +296,17 @@ class PredatorPreyModel(Model):
         agent_fitnesses = [agent.fitness for agent in self.schedule.agents if agent.species == 'predator']
         return np.mean(agent_fitnesses)
     
-    def place_agent(self, agent):
+    def place_agent(self, agent, move=False):
         x = self.random.random() * self.space.x_max
         y = self.random.random() * self.space.y_max
         agent.heading = self.random.random() * 2 - 1
         pos = np.array((x, y))
-        self.space.place_agent(agent, pos)
-        self.schedule.add(agent)
+        if move:
+            self.space.move_agent(agent, pos)
+            agent.pos = pos
+        else: 
+            self.space.place_agent(agent, pos)
+            self.schedule.add(agent)
         return agent
 
     def init_prey(self):
@@ -278,7 +314,7 @@ class PredatorPreyModel(Model):
                                     max_speed = self.prey_max_speed,
                                     acceleration_factor = self.prey_acceleration_factor,
                                     size = self.catch_range,
-                                    vision_range = np.inf,
+                                    vision_range = self.prey_vision_range,
                                     conspecific_vision_cap = self.conspecific_vision_cap,
                                     heterospecific_vision_cap = self.heterospecific_vision_cap,
                                     n_messages = self.prey_message_number,
@@ -289,7 +325,7 @@ class PredatorPreyModel(Model):
                                         max_speed = self.predator_max_speed,
                                         acceleration_factor = self.predator_acceleration_factor,
                                         size = self.catch_range,
-                                        vision_range = np.inf,
+                                        vision_range = self.predator_vision_range,
                                         conspecific_vision_cap = self.conspecific_vision_cap,
                                         heterospecific_vision_cap = self.heterospecific_vision_cap,
                                         n_messages = self.predator_message_number,
@@ -297,11 +333,11 @@ class PredatorPreyModel(Model):
         return agent
 
     def create_population(self):
-        for i in range(self.predator_population_size):
+        for i in range(self.prey_population_size):
             agent = self.init_prey()
             agent = self.place_agent(agent)
 
-        for i in range(self.prey_population_size):
+        for i in range(self.predator_population_size):
             agent = self.init_predator()
             agent = self.place_agent(agent)
 
@@ -356,14 +392,14 @@ class PredatorPreyModel(Model):
         child1_W, child2_W = np.reshape(child1_W, self.agent_W_shape), np.reshape(child2_W, self.agent_W_shape)
         return child1_W, child1_b, child2_W, child2_b
 
-    def mutate(self, genotype, mutation_rate=0.05, flip_prob=0.005, mutation_strength=0.05):
+    def mutate(self, genotype):
         """Mutate a genotype by adding Gaussian noise."""
         mutated_genotype = []
         for gene in genotype:
-            if random.random() < mutation_rate:
-                gene += random.gauss(0, mutation_strength)
+            if random.random() < self.mutation_rate:
+                gene += random.gauss(0, self.mutation_strength)
             mutated_genotype.append(gene)
-            if random.random() < flip_prob:
+            if random.random() < self.mutation_flip_rate:
                 gene = -gene
         return np.array(mutated_genotype)
     
@@ -396,33 +432,56 @@ class PredatorPreyModel(Model):
         return new_agents
 
 
+    
+
     def step(self):
         """Execute one time step of the model."""
 
         self.schedule.step()
+
         self.step_counter += 1
+        self.generation_steps += 1
+        self.run_steps += 1
         self.datacollector.collect(self)
+        
+        if self.run_steps > self.steps_per_run or self.prey_population < 1:
+            self.run_steps = 0
+            self.run_counter += 1
+            print(f'Steps: {self.step_counter}, run: {self.run_counter}, generation: {self.generation_counter}')
+        
+            if self.run_counter % self.runs_per_generation == 0:
+                print('new generation')
+                print(f'Generation {self.generation_counter} run {self.run_counter}')
 
-        if self.step_counter % self.steps_per_generation == 0 or self.prey_population < 1:
-            if self.prey_population < 1:
-                print('Ended generation early, all prey dead')
-            print(f"Generation {self.generation_counter}")
-            self.generation_counter += 1
+                self.generation_steps = 0
+                self.generation_counter += 1
 
-            # Generate new population using old population
-            new_prey = self.create_new_population('prey', self.prey_population_size)
-            self.prey_population = len(new_prey)
+                new_prey = self.create_new_population('prey', self.prey_population_size)
+                self.prey_population = len(new_prey)
 
-            new_predators =  self.create_new_population('predator', self.predator_population_size)
-            new_agents = new_prey + new_predators
+                new_predators =  self.create_new_population('predator', self.predator_population_size)
+                new_agents = new_prey + new_predators
 
-            # Remove old population
+                # Remove old population
+                for agent in list(self.schedule.agents):
+                    self.space.remove_agent(agent)
+                    self.schedule.remove(agent)
+                    del agent
+
+                # Add new agents to the schedule and space
+                for agent in new_agents:
+                    self.place_agent(agent)
+                    agent.generation = self.generation_counter
+
+                self.mutation_rate *= self.mutation_rate_decay
+                self.mutation_strength *= self.mutation_strength_decay
+                self.mutation_flip_rate *= self.mutation_flip_rate_decay
+
+                return
+
+            print('reset_agents')
+            self.prey_population = self.prey_population_size
             for agent in list(self.schedule.agents):
-                self.space.remove_agent(agent)
-                self.schedule.remove(agent)
-                del agent
-
-            # Add new agents to the schedule and space
-            for agent in new_agents:
-                self.place_agent(agent)
-                agent.generation = self.generation_counter
+                agent.run = self.run_counter % self.runs_per_generation
+                agent.reset()
+                self.place_agent(agent, move=True)

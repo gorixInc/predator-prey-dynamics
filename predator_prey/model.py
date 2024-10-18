@@ -50,6 +50,7 @@ class PredatorPreyModel(Model):
                  width=100,
                  height=100,
                  dt=0.05,
+                 log_every=1,
                 ):
         super().__init__()
         self.predator_population_size=predator_population_size
@@ -99,7 +100,7 @@ class PredatorPreyModel(Model):
         self.width=width
         self.height=height
         self.dt=dt
-
+        self.log_every=log_every
 
 
         self.schedule = RandomActivation(self)
@@ -141,7 +142,7 @@ class PredatorPreyModel(Model):
     def compute_average_predator_fitness(self):
         agent_fitnesses = [agent.fitness for agent in self.schedule.agents if agent.species == 'predator']
         return np.mean(agent_fitnesses)
-    
+
     def place_agent(self, agent, move=False):
         x = self.random.random() * self.space.x_max
         y = self.random.random() * self.space.y_max
@@ -294,13 +295,18 @@ class PredatorPreyModel(Model):
         self.step_counter += 1
         self.generation_steps += 1
         self.run_steps += 1
-        self.datacollector.collect(self)
+        logged = False
+        if self.step_counter % self.log_every == 0:
+            self.datacollector.collect(self)
+            logged = True
         
         if self.run_steps > self.steps_per_run or self.prey_population < 1:
             self.run_steps = 0
             self.run_counter += 1
             print(f'Steps: {self.step_counter}, run: {self.run_counter}, generation: {self.generation_counter}')
-        
+            if not logged:
+                self.datacollector.collect(self)
+                logged = True
             if self.run_counter % self.runs_per_generation == 0:
                 print('new generation')
                 print(f'Generation {self.generation_counter} run {self.run_counter}')

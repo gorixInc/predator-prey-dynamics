@@ -163,3 +163,4 @@ cython_debug/
 *.html
 *.csv
 *.hdf
+experiments/*

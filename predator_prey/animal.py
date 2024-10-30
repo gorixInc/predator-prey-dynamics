@@ -20,6 +20,7 @@ class Animal(Agent):
         vision_range = np.inf,
         conspecific_vision_cap = 4,
         heterospecific_vision_cap = 4,
+        vision_noise=0,
         n_messages = 0,
         hidden_sizes = [],
         initial_weights_disp = 0.1,
@@ -37,6 +38,7 @@ class Animal(Agent):
         self.init_heading = heading
         self.heading = heading
         self.size = size
+        self.vision_noise = vision_noise
 
         self.acceleration = 0
         self.acceleration_factor = acceleration_factor
@@ -86,6 +88,8 @@ class Animal(Agent):
         X = observations
         for i in range(len(self.Ws)): 
             X = X @ self.Ws[i] + self.bs[i]
+            if i < len(self.Ws) - 1:  # ReLu for all but last layer
+                X = np.maximum(X, 0)
         Y = np.clip(X, -1, 1)
         return Y
 
@@ -130,19 +134,25 @@ class Animal(Agent):
 
             delta_x, delta_y = (self.pos[0] - consp.pos[0])/self.vision_range, (self.pos[1] - consp.pos[1])/self.vision_range,
 
+<<<<<<< HEAD
+            speed_obs = [consp.speed_x/consp.max_speed, consp.speed_y/consp.max_speed]
+=======
             speed_obs = [consp.speed_x/consp.max_speed, consp.speed_y]
-            this_obs = np.array([delta_x, delta_y] + speed_obs + list(consp.messages)) # size 2 + 2 + n_messages
+>>>>>>> fe8429c49e72a747e50571feb1cc2498ad7295fd
+            this_obs = np.array([delta_x, delta_y] + speed_obs) + np.random.normal(0, self.vision_noise)
+            this_obs = np.hstack((this_obs, np.array(consp.messages)))
             consp_obs[i*self.consp_obs_size:(i+1)*self.consp_obs_size] = this_obs
 
             
-        for i, ind in enumerate(hetero_inds):
+        for i, ind in enumerate(hetero_inds):   
             if i == self.heterospecific_vision_cap:
                 break
             hetero = neighbours[ind]
             delta_x, delta_y = (self.pos[0] - hetero.pos[0])/self.vision_range, (self.pos[1] - hetero.pos[1])/self.vision_range
 
-            speed_obs = [hetero.speed_x, hetero.speed_y]
+            speed_obs = [hetero.speed_x/hetero.max_speed, hetero.speed_y/hetero.max_speed]
             this_obs = np.array([delta_x, delta_y] + speed_obs) # size 2 + 2
+            this_obs += np.random.normal(0, self.vision_noise)
             hetero_obs[i*self.hetero_obs_size:(i+1)*self.hetero_obs_size] = this_obs
 
         all_observations = np.hstack((self_obs, consp_obs, hetero_obs))

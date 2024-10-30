@@ -19,6 +19,9 @@ class PredatorPreyModel(Model):
                  predator_catch_reward=10,
                  prey_death_reward=-10,
                  predator_movement_reward=-0.1,
+                 predator_reward_sharing_frac=0,
+                 predator_reward_sharing_range=0,
+                 
                  prey_movement_reward=-0.1,
                  prey_alive_reward=1,
 
@@ -27,12 +30,14 @@ class PredatorPreyModel(Model):
                  prey_message_number=0,
                  prey_vision_range=np.inf,
                  prey_hidden_sizes=[],
+                 prey_vision_noise=0,
 
                  predator_max_speed=20,
                  predator_acceleration_factor=5,
                  predator_message_number=0,
                  predator_vision_range=np.inf,
                  predator_hidden_sizes=[],
+                 predator_vision_noise=0,
                  
                  conspecific_vision_cap=4,
                  heterospecific_vision_cap=4,
@@ -69,6 +74,8 @@ class PredatorPreyModel(Model):
 
         self.predator_catch_reward=predator_catch_reward
         self.prey_death_reward=prey_death_reward
+        self.predator_reward_sharing_frac = predator_reward_sharing_frac
+        self.predator_reward_sharing_range = predator_reward_sharing_range
         self.predator_movement_reward=predator_movement_reward
         self.prey_movement_reward=prey_movement_reward
         self.prey_alive_reward=prey_alive_reward
@@ -78,12 +85,14 @@ class PredatorPreyModel(Model):
         self.prey_message_number=prey_message_number
         self.prey_vision_range=prey_vision_range
         self.prey_hidden_sizes=prey_hidden_sizes
+        self.prey_vision_noise=prey_vision_noise
 
         self.predator_max_speed=predator_max_speed
         self.predator_acceleration_factor=predator_acceleration_factor
         self.predator_message_number=predator_message_number
         self.predator_vision_range=predator_vision_range
         self.predator_hidden_sizes=predator_hidden_sizes
+        self.predator_vision_noise=predator_vision_noise
 
         self.conspecific_vision_cap=conspecific_vision_cap
         self.heterospecific_vision_cap=heterospecific_vision_cap
@@ -166,7 +175,8 @@ class PredatorPreyModel(Model):
                                     heterospecific_vision_cap = self.heterospecific_vision_cap,
                                     n_messages = self.prey_message_number,
                                     initial_weights_disp=self.agent_initial_weights_disp,
-                                    hidden_sizes=self.prey_hidden_sizes)
+                                    hidden_sizes=self.prey_hidden_sizes,
+                                    vision_noise=self.prey_vision_noise)
         return agent
     def init_predator(self):
         agent = self.species_to_class['predator'](model=self, species='predator',
@@ -178,7 +188,10 @@ class PredatorPreyModel(Model):
                                         heterospecific_vision_cap = self.heterospecific_vision_cap,
                                         n_messages = self.predator_message_number,
                                         initial_weights_disp=self.agent_initial_weights_disp,
-                                        hidden_sizes=self.predator_hidden_sizes)
+                                        hidden_sizes=self.predator_hidden_sizes,
+                                        reward_sharing_range=self.predator_reward_sharing_range,
+                                        reward_sharing_frac=self.predator_reward_sharing_frac,
+                                        vision_noise=self.predator_vision_noise)
         return agent
 
     def create_population(self):
@@ -284,8 +297,6 @@ class PredatorPreyModel(Model):
             new_agents = new_agents[:n_agents]
         return new_agents
 
-
-    
 
     def step(self):
         """Execute one time step of the model."""

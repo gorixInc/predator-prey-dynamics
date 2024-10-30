@@ -63,9 +63,13 @@ agent_data.index = agent_data.index.set_levels(
     level=1,
 )
 os.makedirs(experiment_dir, exist_ok=True)
-agent_data.to_hdf(f'{experiment_dir}/agent_data.hdf', key='agent_data', mode='w')
-model_data.to_hdf(f'{experiment_dir}/model_data.hdf', key='model_data', mode='w')
-pickle.dump(model_params, open(f'{experiment_dir}/params.pkl', "wb"))
+try:
+    agent_data.to_hdf(f'{experiment_dir}/agent_data.hdf', key='agent_data', mode='w')
+    model_data.to_hdf(f'{experiment_dir}/model_data.hdf', key='model_data', mode='w')
+    pickle.dump(model_params, open(f'{experiment_dir}/params.pkl', "wb"))
+except:
+    print('errors when saving data')
+    pass
 
 generations = agent_data['Generation'].unique()
 def get_mean_nnd(data):
@@ -119,7 +123,7 @@ generation_data_df = pd.DataFrame(data={
   'generation': generations,
   'predator_nnd': predator_nnd,
   'prey_nnd': prey_nnd,
-  'predator_nnd': predator_nnd
+  'prey_alive_avg': average_alive_prey
 })
 
 generation_data_df.to_csv(f'{experiment_dir}/generation_metrics.csv')
